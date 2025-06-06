@@ -29,8 +29,12 @@ async def whatsapp_webhook(request: Request):
     thread_id = from_number
     config = {"configurable": {"thread_id": thread_id}}
     
-    # Define the input for the agent
-    agent_input = {"messages": [HumanMessage(content=incoming_msg)]}
+    # Clean phone number (remove whatsapp: prefix)
+    clean_phone = from_number.replace("whatsapp:", "")
+    
+    # Define the input for the agent with phone number context
+    user_message = f"Phone: {clean_phone}\nMessage: {incoming_msg}"
+    agent_input = {"messages": [HumanMessage(content=user_message)]}
 
     # Get the response from the agent
     try:
