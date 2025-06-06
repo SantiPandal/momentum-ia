@@ -4,13 +4,15 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 from supabase import create_client, Client
 import os
+from datetime import datetime, date
+from typing import Optional, Dict, Any, List
 
 # Initialize Supabase client
 url: str = os.environ.get("SUPABASE_URL")
 key: str = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(url, key)
 
-# --- Tool 1: get_user_status (Now Smarter) ---
+# --- Tool 1: get_user_status (Updated for new schema) ---
 @tool
 def get_user_status(phone_number: str) -> str:
     """
@@ -18,8 +20,8 @@ def get_user_status(phone_number: str) -> str:
     If the user does not exist, it creates a new user record.
     It returns one of three statuses:
     - 'new_user': For users messaging for the very first time.
-    - 'user_exists_no_goal': For existing users who do not have an active goal.
-    - 'user_exists_active_goal': For existing users who have an active goal.
+    - 'user_exists_no_goal': For existing users who do not have an active commitment.
+    - 'user_exists_active_goal': For existing users who have an active commitment.
     """
     try:
         response = supabase.table("users").select("id, name").eq("phone_number", phone_number).execute()
@@ -33,15 +35,15 @@ def get_user_status(phone_number: str) -> str:
             else:
                 return "error_creating_user"
         
-        # If user exists, check if they have completed onboarding
+        # If user exists, check if they have completed basic setup (have a name)
         user = response.data[0]
         if not user.get("name"):
              return "new_user" # Treat them as new if they don't have a name yet.
 
-        # Check if user has active challenges
-        challenges_response = supabase.table("challenges").select("id").eq("user_id", user["id"]).eq("status", "active").execute()
+        # Check if user has active commitments
+        commitments_response = supabase.table("commitments").select("id, goal_description").eq("user_id", user["id"]).eq("status", "active").execute()
         
-        has_active_goal = len(challenges_response.data) > 0
+        has_active_goal = len(commitments_response.data) > 0
 
         if has_active_goal:
             return f"user_exists_active_goal:{user.get('name', 'User')}"
@@ -53,7 +55,7 @@ def get_user_status(phone_number: str) -> str:
         return "error_database_check"
 
 
-# --- Tool 2: update_user_name (Brand New) ---
+# --- Tool 2: update_user_name (Same - no changes needed) ---
 class UpdateUserNameArgs(BaseModel):
     phone_number: str = Field(description="The user's phone number, including the 'whatsapp:' prefix.")
     name: str = Field(description="The user's first name to save.")
@@ -64,29 +66,43 @@ def update_user_name(phone_number: str, name: str) -> str:
     Updates the user's record with their name after they provide it during onboarding.
     """
     try:
-        response = supabase.table("users").update({"name": name, "onboarding_completed": True}).eq("phone_number", phone_number).execute()
+        response = supabase.table("users").update({"name": name}).eq("phone_number", phone_number).execute()
         if response.data:
             print(f"Updated name for {phone_number} to {name}")
             return f"Successfully updated user's name to {name}."
         else:
-            # This might happen if the phone number somehow doesn't exist, which is unlikely
             return "Error: Could not find user to update."
     except Exception as e:
         print(f"Error updating user name: {e}")
         return "Error updating name in database."
     
-# --- Tool 3: create_challenge ---
-class CreateChallengeArgs(BaseModel):
-    phone_number: str = Field(description="The user's phone number to identify them.")
-    goal_description: str = Field(description="Description of the goal/challenge.")
-    stake_amount: float = Field(description="Amount the user is willing to stake/risk.")
-    target_date: str = Field(description="Target completion date in YYYY-MM-DD format.")
-    verification_method: dict = Field(description="How the goal will be verified (e.g., {'type': 'photo', 'description': 'Before/after photos'}).", default={})
 
-@tool(args_schema=CreateChallengeArgs)
-def create_challenge(phone_number: str, goal_description: str, stake_amount: float, target_date: str, verification_method: dict = {}) -> str:
+# --- Tool 3: create_commitment (Updated from create_challenge) ---
+class CreateCommitmentArgs(BaseModel):
+    phone_number: str = Field(description="The user's phone number to identify them.")
+    goal_description: str = Field(description="High-level description of the goal/commitment.")
+    task_description: Optional[str] = Field(description="Specific task or action to be done daily/periodically.", default=None)
+    stake_amount: float = Field(description="Amount the user is willing to stake/risk.")
+    stake_type: str = Field(description="Type of stake: 'per_missed_day' or 'one_time_on_failure'.", default="one_time_on_failure")
+    start_date: str = Field(description="Start date in YYYY-MM-DD format.")
+    end_date: str = Field(description="End date in YYYY-MM-DD format.")
+    schedule: Optional[Dict[str, Any]] = Field(description="Schedule configuration (e.g., {'daily': True} or {'weekly': ['monday', 'wednesday']}).", default=None)
+    verification_method: Optional[str] = Field(description="How the commitment will be verified.", default=None)
+
+@tool(args_schema=CreateCommitmentArgs)
+def create_commitment(
+    phone_number: str, 
+    goal_description: str, 
+    stake_amount: float, 
+    start_date: str, 
+    end_date: str,
+    task_description: Optional[str] = None,
+    stake_type: str = "one_time_on_failure",
+    schedule: Optional[Dict[str, Any]] = None,
+    verification_method: Optional[str] = None
+) -> str:
     """
-    Creates a new challenge/goal for a user with a stake amount and target date.
+    Creates a new commitment/goal for a user with stake amount, dates, and schedule.
     """
     try:
         # First, find the user by phone number to get their user_id
@@ -97,24 +113,114 @@ def create_challenge(phone_number: str, goal_description: str, stake_amount: flo
         
         user_id = user_response.data[0]["id"]
         
-        # Create the challenge
-        challenge_data = {
+        # Default schedule if none provided
+        if schedule is None:
+            schedule = {"daily": True}
+        
+        # Create the commitment
+        commitment_data = {
             "user_id": user_id,
             "goal_description": goal_description,
+            "task_description": task_description,
             "stake_amount": stake_amount,
-            "target_date": target_date,
+            "stake_type": stake_type,
+            "start_date": start_date,
+            "end_date": end_date,
+            "schedule": schedule,
             "verification_method": verification_method
         }
         
-        challenge_response = supabase.table("challenges").insert(challenge_data).execute()
+        commitment_response = supabase.table("commitments").insert(commitment_data).execute()
         
-        if challenge_response.data:
-            challenge_id = challenge_response.data[0]["id"]
-            print(f"Challenge created for {phone_number}: {goal_description}")
-            return f"Successfully created challenge! Challenge ID: {challenge_id}. Goal: {goal_description}, Stake: ${stake_amount}, Target: {target_date}"
+        if commitment_response.data:
+            commitment_id = commitment_response.data[0]["id"]
+            print(f"Commitment created for {phone_number}: {goal_description}")
+            return f"Successfully created commitment! Goal: {goal_description}, Stake: ${stake_amount} ({stake_type}), Period: {start_date} to {end_date}"
         else:
-            return "Error: Could not create challenge."
+            return "Error: Could not create commitment."
             
     except Exception as e:
-        print(f"Error creating challenge: {e}")
-        return "Error creating challenge in database."
+        print(f"Error creating commitment: {e}")
+        return "Error creating commitment in database."
+
+
+# --- Tool 4: get_active_commitment (New tool) ---
+@tool
+def get_active_commitment(phone_number: str) -> str:
+    """
+    Retrieves the active commitment details for a user.
+    """
+    try:
+        # Get user ID
+        user_response = supabase.table("users").select("id").eq("phone_number", phone_number).execute()
+        if not user_response.data:
+            return "Error: User not found."
+        
+        user_id = user_response.data[0]["id"]
+        
+        # Get active commitment
+        commitment_response = supabase.table("commitments").select("*").eq("user_id", user_id).eq("status", "active").execute()
+        
+        if not commitment_response.data:
+            return "No active commitment found."
+        
+        commitment = commitment_response.data[0]
+        
+        return f"Active Goal: {commitment['goal_description']}\nTask: {commitment.get('task_description', 'Not specified')}\nStake: ${commitment['stake_amount']} ({commitment['stake_type']})\nPeriod: {commitment['start_date']} to {commitment['end_date']}\nVerification: {commitment.get('verification_method', 'Not specified')}"
+        
+    except Exception as e:
+        print(f"Error getting active commitment: {e}")
+        return "Error retrieving commitment details."
+
+
+# --- Tool 5: create_verification (New tool) ---
+class CreateVerificationArgs(BaseModel):
+    phone_number: str = Field(description="The user's phone number to identify them.")
+    due_date: str = Field(description="Due date for this verification in YYYY-MM-DD format.")
+    proof_url: Optional[str] = Field(description="URL to proof (e.g., photo URL).", default=None)
+    justification: Optional[str] = Field(description="Text justification/explanation.", default=None)
+
+@tool(args_schema=CreateVerificationArgs)
+def create_verification(
+    phone_number: str, 
+    due_date: str, 
+    proof_url: Optional[str] = None, 
+    justification: Optional[str] = None
+) -> str:
+    """
+    Creates a verification record for the user's active commitment.
+    """
+    try:
+        # Get user and their active commitment
+        user_response = supabase.table("users").select("id").eq("phone_number", phone_number).execute()
+        if not user_response.data:
+            return "Error: User not found."
+        
+        user_id = user_response.data[0]["id"]
+        
+        commitment_response = supabase.table("commitments").select("id").eq("user_id", user_id).eq("status", "active").execute()
+        if not commitment_response.data:
+            return "Error: No active commitment found."
+        
+        commitment_id = commitment_response.data[0]["id"]
+        
+        # Create verification
+        verification_data = {
+            "commitment_id": commitment_id,
+            "due_date": due_date,
+            "status": "completed_on_time",  # Default to on-time completion
+            "proof_url": proof_url,
+            "justification": justification,
+            "verified_at": datetime.now().isoformat()
+        }
+        
+        verification_response = supabase.table("verifications").insert(verification_data).execute()
+        
+        if verification_response.data:
+            return f"Verification recorded successfully for {due_date}!"
+        else:
+            return "Error: Could not create verification."
+            
+    except Exception as e:
+        print(f"Error creating verification: {e}")
+        return "Error creating verification record."
