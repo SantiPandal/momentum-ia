@@ -33,20 +33,20 @@ def get_user_status(phone_number: str) -> str:
             else:
                 return "error_creating_user"
         
-        # If user exists, check for an active goal (we'll build this logic out more later)
-        # For now, if their name is missing, we'll assume they need to finish basic onboarding.
+        # If user exists, check if they have completed onboarding
         user = response.data[0]
         if not user.get("name"):
              return "new_user" # Treat them as new if they don't have a name yet.
 
-        # Here we would check the 'commitments' table. For now, we'll assume no active goal.
-        # This is where you would add a query to your commitments table later.
-        has_active_goal = False 
+        # Check if user has active challenges
+        challenges_response = supabase.table("challenges").select("id").eq("user_id", user["id"]).eq("status", "active").execute()
+        
+        has_active_goal = len(challenges_response.data) > 0
 
         if has_active_goal:
-            return "user_exists_active_goal"
+            return f"user_exists_active_goal:{user.get('name', 'User')}"
         else:
-            return "user_exists_no_goal"
+            return f"user_exists_no_goal:{user.get('name', 'User')}"
 
     except Exception as e:
         print(f"Error checking user status: {e}")
@@ -74,3 +74,47 @@ def update_user_name(phone_number: str, name: str) -> str:
     except Exception as e:
         print(f"Error updating user name: {e}")
         return "Error updating name in database."
+    
+# --- Tool 3: create_challenge ---
+class CreateChallengeArgs(BaseModel):
+    phone_number: str = Field(description="The user's phone number to identify them.")
+    goal_description: str = Field(description="Description of the goal/challenge.")
+    stake_amount: float = Field(description="Amount the user is willing to stake/risk.")
+    target_date: str = Field(description="Target completion date in YYYY-MM-DD format.")
+    verification_method: dict = Field(description="How the goal will be verified (e.g., {'type': 'photo', 'description': 'Before/after photos'}).", default={})
+
+@tool(args_schema=CreateChallengeArgs)
+def create_challenge(phone_number: str, goal_description: str, stake_amount: float, target_date: str, verification_method: dict = {}) -> str:
+    """
+    Creates a new challenge/goal for a user with a stake amount and target date.
+    """
+    try:
+        # First, find the user by phone number to get their user_id
+        user_response = supabase.table("users").select("id").eq("phone_number", phone_number).execute()
+        
+        if not user_response.data:
+            return "Error: User not found. Please make sure the user is registered first."
+        
+        user_id = user_response.data[0]["id"]
+        
+        # Create the challenge
+        challenge_data = {
+            "user_id": user_id,
+            "goal_description": goal_description,
+            "stake_amount": stake_amount,
+            "target_date": target_date,
+            "verification_method": verification_method
+        }
+        
+        challenge_response = supabase.table("challenges").insert(challenge_data).execute()
+        
+        if challenge_response.data:
+            challenge_id = challenge_response.data[0]["id"]
+            print(f"Challenge created for {phone_number}: {goal_description}")
+            return f"Successfully created challenge! Challenge ID: {challenge_id}. Goal: {goal_description}, Stake: ${stake_amount}, Target: {target_date}"
+        else:
+            return "Error: Could not create challenge."
+            
+    except Exception as e:
+        print(f"Error creating challenge: {e}")
+        return "Error creating challenge in database."

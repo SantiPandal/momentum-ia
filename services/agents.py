@@ -6,10 +6,10 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 # Import our custom tools
-from services.tools.database_tools import get_user_status, update_user_name
+from services.tools.database_tools import get_user_status, update_user_name, create_challenge
 
 # The list of tools our agent can use
-tools = [get_user_status, update_user_name]
+tools = [get_user_status, update_user_name, create_challenge]
 
 # The LLM "Brain"
 model = ChatOpenAI(model="gpt-4.1", temperature=0) # Using a more capable model for agentic logic
@@ -29,9 +29,15 @@ The user's phone number will be provided in the format "Phone: +1234567890". Ext
 - After successfully calling the tool, confirm with the user that they are all set up, for example: "Great, I've got you down as [Name]. Welcome to Momentum! You can tell me whenever you're ready to set up your first goal."
 - Your job in this stage is FINISHED after you save their name. Do not ask about goals yet.
 
-**Stage 2: Goal Setting & Coaching** (We will build this out next)
-- If the `get_user_status` tool returns 'user_exists_no_goal', greet them by name and ask if they are ready to set a new goal.
-- If the tool returns 'user_exists_active_goal', greet them and start coaching them on their active goal.
+**Stage 2: Goal Setting & Coaching**
+- If the `get_user_status` tool returns 'user_exists_no_goal:Name', extract their name and greet them personally, then ask if they are ready to set a new goal.
+- When they want to create a goal, gather the following information:
+  * Goal description (what they want to achieve)
+  * Stake amount (how much money they're willing to risk)
+  * Target date (when they want to complete it)
+  * Verification method (how they'll prove completion)
+- Once you have all the information, call the `create_challenge` tool to save their goal.
+- If the tool returns 'user_exists_active_goal:Name', extract their name, greet them personally, and start coaching them on their active goal.
 """
 
 # Create the agent using the prebuilt function from the tutorial
