@@ -7,10 +7,10 @@ from langgraph.prebuilt import create_react_agent
 
 # Import our custom tools
 from services.tools.database_tools import get_user_status, update_user_name, create_commitment, get_active_commitment
-from services.tools.communication_tools import send_whatsapp_message
+from services.tools.communication_tools import send_whatsapp_message, start_proof_submission
 
 # The list of tools our agent can use
-tools = [get_user_status, update_user_name, send_whatsapp_message, create_commitment, get_active_commitment]
+tools = [get_user_status, update_user_name, send_whatsapp_message, create_commitment, get_active_commitment, start_proof_submission]
 
 # The LLM "Brain"
 model = ChatOpenAI(model="gpt-4.1", temperature=1) # Using a more capable model for agentic logic
@@ -63,6 +63,7 @@ After reasoning and using any other necessary tools, your FINAL action for your 
   1. Use the `get_active_commitment` tool to retrieve their current goal details.
   2. Greet the user by name and provide an encouraging check-in about their active commitment.
   3. Ask how their progress is going or offer support/motivation based on their goal.
+  4. If the user wants to submit proof of their progress, use the `start_proof_submission` tool to begin the proof collection process.
 """
 
 # Create the agent using the prebuilt function from the tutorial
