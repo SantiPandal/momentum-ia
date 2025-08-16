@@ -5,13 +5,23 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-# Import our custom tools
+# Import our custom tools - both Flow and simple proof submission
 from services.tools.database_tools import get_user_status, update_user_name, create_commitment, get_active_commitment
-from services.tools.communication_tools import send_whatsapp_message, send_whatsapp_flow
+from services.tools.communication_tools import send_whatsapp_message, send_whatsapp_flow, start_proof_submission
 from services.tools.verification_tools import process_flow_response, create_verification_record
 
-# The list of tools our agent can use
-tools = [get_user_status, update_user_name, send_whatsapp_message, create_commitment, get_active_commitment, send_whatsapp_flow, process_flow_response, create_verification_record]
+# The list of tools our agent can use - includes both approaches
+tools = [
+    get_user_status, 
+    update_user_name, 
+    send_whatsapp_message, 
+    create_commitment, 
+    get_active_commitment, 
+    send_whatsapp_flow,  # Flow-based proof submission
+    start_proof_submission,  # Simple photo submission
+    process_flow_response, 
+    create_verification_record
+]
 
 # The LLM "Brain"
 model = ChatOpenAI(model="gpt-4.1", temperature=1) # Using a more capable model for agentic logic
@@ -64,7 +74,9 @@ After reasoning and using any other necessary tools, your FINAL action for your 
   1. Use the `get_active_commitment` tool to retrieve their current goal details.
   2. Greet the user by name and provide an encouraging check-in about their active commitment.
   3. Ask how their progress is going or offer support/motivation based on their goal.
-  4. When they want to submit proof, use the `send_whatsapp_flow` tool to send them a photo verification flow.
+  4. When they want to submit proof:
+     - Option A: Use the `send_whatsapp_flow` tool to send them a photo verification flow (if available)
+     - Option B: Use the `start_proof_submission` tool to begin the simple proof collection process
 
 ---
 

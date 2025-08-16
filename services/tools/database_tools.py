@@ -224,3 +224,91 @@ def create_verification(
     except Exception as e:
         print(f"Error creating verification: {e}")
         return "Error creating verification record."
+
+
+# --- Tool 6: manage_proof_submission_state (New tool for state-based proof collection) ---
+class ManageProofStateArgs(BaseModel):
+    phone_number: str = Field(description="The user's phone number to identify them.")
+    state: Optional[str] = Field(description="New state to set: 'awaiting_proof_photo' or None to clear", default=None)
+    proof_data: Optional[Dict[str, Any]] = Field(description="Proof data to store (type, image_url, description)", default=None)
+
+@tool(args_schema=ManageProofStateArgs)
+def manage_proof_submission_state(
+    phone_number: str, 
+    state: Optional[str] = None,
+    proof_data: Optional[Dict[str, Any]] = None
+) -> str:
+    """
+    Manages proof submission state for users. Simple photo-only workflow:
+    'awaiting_proof_photo' -> user sends photo -> state cleared (complete)
+    """
+    try:
+        # Get user - try with proof columns first, fallback to basic columns
+        try:
+            user_response = supabase.table("users").select("id, proof_submission_state, proof_submission_data").eq("phone_number", phone_number).execute()
+        except Exception as schema_error:
+            print(f"⚠️ Proof columns don't exist, using basic user lookup: {schema_error}")
+            # Fallback to basic user columns if proof columns don't exist
+            user_response = supabase.table("users").select("id").eq("phone_number", phone_number).execute()
+            # Return error for now since we can't manage state without the columns
+            return "Error: Database schema missing proof_submission_state column"
+        if not user_response.data:
+            return "Error: User not found."
+        
+        user = user_response.data[0]
+        user_id = user["id"]
+        
+        # Get current proof data or initialize empty
+        current_proof_data = user.get("proof_submission_data") or {}
+        
+        # Update proof data if provided
+        if proof_data:
+            current_proof_data.update(proof_data)
+        
+        # Update user state
+        update_data = {
+            "proof_submission_state": state,
+            "proof_submission_data": current_proof_data if current_proof_data else None
+        }
+        
+        update_response = supabase.table("users").update(update_data).eq("id", user_id).execute()
+        
+        if update_response.data:
+            if state:
+                return f"User proof submission state updated to: {state}"
+            else:
+                return "User proof submission state cleared"
+        else:
+            return "Error updating user state"
+            
+    except Exception as e:
+        print(f"Error managing proof submission state: {e}")
+        return "Error managing proof submission state"
+
+
+@tool
+def get_proof_submission_state(phone_number: str) -> str:
+    """
+    Gets the current proof submission state and data for a user.
+    """
+    try:
+        try:
+            user_response = supabase.table("users").select("proof_submission_state, proof_submission_data").eq("phone_number", phone_number).execute()
+        except Exception as schema_error:
+            print(f"⚠️ Proof columns don't exist in get_proof_submission_state: {schema_error}")
+            return "No active proof submission process"
+        if not user_response.data:
+            return "Error: User not found."
+        
+        user = user_response.data[0]
+        state = user.get("proof_submission_state")
+        data = user.get("proof_submission_data") or {}
+        
+        if not state:
+            return "No active proof submission process"
+        
+        return f"State: {state}, Data: {data}"
+        
+    except Exception as e:
+        print(f"Error getting proof submission state: {e}")
+        return "Error retrieving proof submission state"
