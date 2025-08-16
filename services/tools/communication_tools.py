@@ -5,6 +5,10 @@ from pydantic import BaseModel, Field
 from twilio.rest import Client
 import os
 import json
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 @tool
 def send_whatsapp_message(to_number: str, body: str) -> str:

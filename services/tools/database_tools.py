@@ -6,6 +6,10 @@ from supabase import create_client, Client
 import os
 from datetime import datetime, date
 from typing import Optional, Dict, Any, List
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize Supabase client
 url: str = os.environ.get("SUPABASE_URL")
