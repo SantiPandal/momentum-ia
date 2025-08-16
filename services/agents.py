@@ -7,10 +7,11 @@ from langgraph.prebuilt import create_react_agent
 
 # Import our custom tools
 from services.tools.database_tools import get_user_status, update_user_name, create_commitment, get_active_commitment
-from services.tools.communication_tools import send_whatsapp_message
+from services.tools.communication_tools import send_whatsapp_message, send_whatsapp_flow
+from services.tools.verification_tools import process_flow_response, create_verification_record
 
 # The list of tools our agent can use
-tools = [get_user_status, update_user_name, send_whatsapp_message, create_commitment, get_active_commitment]
+tools = [get_user_status, update_user_name, send_whatsapp_message, create_commitment, get_active_commitment, send_whatsapp_flow, process_flow_response, create_verification_record]
 
 # The LLM "Brain"
 model = ChatOpenAI(model="gpt-4.1", temperature=1) # Using a more capable model for agentic logic
@@ -63,6 +64,17 @@ After reasoning and using any other necessary tools, your FINAL action for your 
   1. Use the `get_active_commitment` tool to retrieve their current goal details.
   2. Greet the user by name and provide an encouraging check-in about their active commitment.
   3. Ask how their progress is going or offer support/motivation based on their goal.
+  4. When they want to submit proof, use the `send_whatsapp_flow` tool to send them a photo verification flow.
+
+---
+
+**Stage 4: Flow Response Processing**
+- **Trigger:** When you receive flow response data (JSON containing image data).
+- **Your Goal:** Process the verification and provide feedback.
+- **Process:**
+  1. Use the `process_flow_response` tool to analyze the image against their goal.
+  2. Use the `create_verification_record` tool to save the verification result.
+  3. Use `send_whatsapp_message` to provide encouraging feedback based on the verification result.
 """
 
 # Create the agent using the prebuilt function from the tutorial
