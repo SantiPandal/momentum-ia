@@ -57,4 +57,7 @@ logs/
 # Temporary files
 tmp/
 temp/
-project_context.txt 
+project_context.txt
+
+# MCP Configuration (contains tokens)
+.mcp.json 

@@ -1,31 +1,30 @@
 # apis/whatsapp.py
 
 from fastapi import APIRouter, Request
-from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage
+from logger import get_logger
 
 from services.agents import agent_executor
-from services.tools.communication_tools import send_whatsapp_message
+from services.agent_tools import send_whatsapp_message
 
-load_dotenv()
+logger = get_logger(__name__)
 router = APIRouter()
 
 @router.get("/webhook")
 async def webhook_validation(request: Request):
     """Handle Twilio webhook validation"""
-    print("🔍 GET webhook validation request received")
+    logger.info("Webhook validation request received")
     return {"status": "webhook_validation_ok"}
 
 @router.post("/webhook")
 async def handle_whatsapp_message(request: Request):
-    from services.tools.communication_tools import process_proof_submission_response
-    from services.tools.database_tools import get_proof_submission_state
+    from services.agent_tools import process_proof_submission_response, get_proof_submission_state
     
-    print("🔥 WEBHOOK HIT - Request received!")
+    logger.info("WhatsApp webhook request received")
     
-    # Log all form data for debugging
+    # Get form data
     form_data = await request.form()
-    print(f"📋 Full form data: {dict(form_data)}")
+    logger.debug(f"Form data received: {dict(form_data)}")
     
     incoming_msg = form_data.get("Body", "")
     from_number = form_data.get("From", "")
@@ -44,11 +43,9 @@ async def handle_whatsapp_message(request: Request):
         # Reconstruct the whatsapp number
         from_number = f"whatsapp:{number_only}"
 
-    print(f"📱 Received message: '{incoming_msg}' from {from_number}")
-    if media_url:
-        print(f"🖼️ Media URL: {media_url}")
+    logger.info(f"Message received from {from_number}: '{incoming_msg[:50]}...' ({'with media' if media_url else 'text only'})")
     if flow_response:
-        print(f"📝 Flow response data: {flow_response}")
+        logger.info(f"Flow response received from {from_number}")
 
     if not from_number:
         return {"status": "error", "message": "Missing sender number"}
@@ -67,8 +64,7 @@ async def handle_whatsapp_message(request: Request):
             })
             return {"status": "ok"}
     except Exception as e:
-        print(f"❌ Error checking proof submission state: {e}")
-        print(f"❌ Error type: {type(e)}")
+        logger.error(f"Error checking proof submission state: {e}")
         # Continue to regular agent processing if proof state check fails
 
     thread_id = from_number
@@ -95,14 +91,11 @@ async def handle_whatsapp_message(request: Request):
 
     # Invoke the agent
     try:
-        print("🤖 Invoking agent...")
+        logger.info(f"Invoking AI agent for {from_number}")
         result = await agent_executor.ainvoke(agent_input, config=config)
-        print(f"✅ Agent execution completed")
+        logger.info(f"Agent execution completed for {from_number}")
     except Exception as e:
-        print(f"❌ Error invoking agent: {e}")
-        print(f"❌ Error type: {type(e)}")
-        import traceback
-        print(f"❌ Full traceback: {traceback.format_exc()}")
+        logger.error(f"Error invoking agent for {from_number}: {e}", exc_info=True)
         return {"status": "error", "message": f"Agent error: {e}"}
 
     return {"status": "ok"}

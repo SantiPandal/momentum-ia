@@ -5,12 +5,27 @@ from langchain_core.prompts import ChatPromptTemplate
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-# Import our custom tools - both Flow and simple proof submission
-from services.tools.database_tools import get_user_status, update_user_name, create_commitment, get_active_commitment
-from services.tools.communication_tools import send_whatsapp_message, send_whatsapp_flow, start_proof_submission
-from services.tools.verification_tools import process_flow_response, create_verification_record
+# Import all tools from the consolidated agent_tools module
+from services.agent_tools import (
+    # Database tools
+    get_user_status, 
+    update_user_name, 
+    create_commitment, 
+    get_active_commitment,
+    create_verification,
+    manage_proof_submission_state,
+    get_proof_submission_state,
+    # Communication tools
+    send_whatsapp_message, 
+    send_whatsapp_flow, 
+    start_proof_submission,
+    process_proof_submission_response,
+    # Verification tools
+    process_flow_response, 
+    create_verification_record
+)
 
-# The list of tools our agent can use - includes both approaches
+# The list of tools our agent can use - all tools from single module
 tools = [
     get_user_status, 
     update_user_name, 
